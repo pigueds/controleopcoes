@@ -14,7 +14,216 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      options: {
+        Row: {
+          created_at: string
+          entry_date: string
+          entry_price: number
+          exit_date: string | null
+          exit_price: number | null
+          expiration_date: string
+          id: string
+          notes: string | null
+          option_ticker: string
+          option_type: Database["public"]["Enums"]["option_type"]
+          quantity: number
+          status: Database["public"]["Enums"]["option_status"]
+          stock_ticker: string
+          strike: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          entry_date: string
+          entry_price: number
+          exit_date?: string | null
+          exit_price?: number | null
+          expiration_date: string
+          id?: string
+          notes?: string | null
+          option_ticker: string
+          option_type: Database["public"]["Enums"]["option_type"]
+          quantity: number
+          status?: Database["public"]["Enums"]["option_status"]
+          stock_ticker: string
+          strike: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          entry_date?: string
+          entry_price?: number
+          exit_date?: string | null
+          exit_price?: number | null
+          expiration_date?: string
+          id?: string
+          notes?: string | null
+          option_ticker?: string
+          option_type?: Database["public"]["Enums"]["option_type"]
+          quantity?: number
+          status?: Database["public"]["Enums"]["option_status"]
+          stock_ticker?: string
+          strike?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      reference_expirations: {
+        Row: {
+          expiration_date: string
+          id: string
+          month_number: number
+          year_month_key: number
+        }
+        Insert: {
+          expiration_date: string
+          id?: string
+          month_number: number
+          year_month_key: number
+        }
+        Update: {
+          expiration_date?: string
+          id?: string
+          month_number?: number
+          year_month_key?: number
+        }
+        Relationships: []
+      }
+      reference_letters: {
+        Row: {
+          letter: string
+          month_name: string
+          month_number: number
+          option_type: Database["public"]["Enums"]["option_type"]
+        }
+        Insert: {
+          letter: string
+          month_name: string
+          month_number: number
+          option_type: Database["public"]["Enums"]["option_type"]
+        }
+        Update: {
+          letter?: string
+          month_name?: string
+          month_number?: number
+          option_type?: Database["public"]["Enums"]["option_type"]
+        }
+        Relationships: []
+      }
+      reference_stocks: {
+        Row: {
+          id: string
+          prefix: string
+          stock_ticker: string
+        }
+        Insert: {
+          id?: string
+          prefix: string
+          stock_ticker: string
+        }
+        Update: {
+          id?: string
+          prefix?: string
+          stock_ticker?: string
+        }
+        Relationships: []
+      }
+      stock_movements: {
+        Row: {
+          created_at: string
+          date: string
+          event_type: Database["public"]["Enums"]["movement_event"]
+          id: string
+          origin: string | null
+          price: number
+          quantity: number
+          stock_ticker: string
+          total_value: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          event_type: Database["public"]["Enums"]["movement_event"]
+          id?: string
+          origin?: string | null
+          price: number
+          quantity: number
+          stock_ticker: string
+          total_value: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          event_type?: Database["public"]["Enums"]["movement_event"]
+          id?: string
+          origin?: string | null
+          price?: number
+          quantity?: number
+          stock_ticker?: string
+          total_value?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      stocks: {
+        Row: {
+          asset_type: Database["public"]["Enums"]["asset_type"]
+          created_at: string
+          current_price: number
+          daily_change: number
+          id: string
+          manual_avg_price: number | null
+          ticker: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          asset_type?: Database["public"]["Enums"]["asset_type"]
+          created_at?: string
+          current_price?: number
+          daily_change?: number
+          id?: string
+          manual_avg_price?: number | null
+          ticker: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          asset_type?: Database["public"]["Enums"]["asset_type"]
+          created_at?: string
+          current_price?: number
+          daily_change?: number
+          id?: string
+          manual_avg_price?: number | null
+          ticker?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +232,16 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      asset_type: "ACAO" | "FII" | "ETF" | "RENDA_FIXA" | "OUTRO"
+      movement_event:
+        | "SALDO_INICIAL"
+        | "COMPRA"
+        | "VENDA"
+        | "EXERCICIO_PUT"
+        | "EXERCICIO_CALL"
+        | "AJUSTE"
+      option_status: "ABERTA" | "ENCERRADA" | "EXERCIDA"
+      option_type: "CALL" | "PUT"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +368,18 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      asset_type: ["ACAO", "FII", "ETF", "RENDA_FIXA", "OUTRO"],
+      movement_event: [
+        "SALDO_INICIAL",
+        "COMPRA",
+        "VENDA",
+        "EXERCICIO_PUT",
+        "EXERCICIO_CALL",
+        "AJUSTE",
+      ],
+      option_status: ["ABERTA", "ENCERRADA", "EXERCIDA"],
+      option_type: ["CALL", "PUT"],
+    },
   },
 } as const
