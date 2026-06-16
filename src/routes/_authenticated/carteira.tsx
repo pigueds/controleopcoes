@@ -11,8 +11,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { aggregatePosition, callCoverage, fmtMoney, fmtPct, recommendation } from "@/lib/options-utils";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+
+async function fetchQuote(ticker: string): Promise<{ price: number; change: number } | null> {
+  try {
+    const res = await fetch(`https://brapi.dev/api/quote/${ticker}?range=1d&interval=1d`);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const r = json?.results?.[0];
+    if (!r) return null;
+    return { price: Number(r.regularMarketPrice) || 0, change: Number(r.regularMarketChangePercent) || 0 };
+  } catch { return null; }
+}
 
 export const Route = createFileRoute("/_authenticated/carteira")({
   component: CarteiraPage,
