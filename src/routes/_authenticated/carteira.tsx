@@ -240,8 +240,20 @@ function StockDialog({ onClose }: { onClose: () => void }) {
           <div><Label>Preço atual</Label><Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} /></div>
           <div><Label>Var. dia (%)</Label><Input type="number" step="0.01" value={change} onChange={(e) => setChange(e.target.value)} /></div>
         </div>
-        <div><Label>Preço médio (opcional, sobrescreve cálculo das movimentações)</Label>
-          <Input type="number" step="0.01" value={avg} onChange={(e) => setAvg(e.target.value)} /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><Label>Quantidade</Label><Input type="number" step="1" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="100" /></div>
+          <div><Label>Preço médio (opcional)</Label><Input type="number" step="0.01" value={avg} onChange={(e) => setAvg(e.target.value)} /></div>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={async () => {
+          if (!ticker) return toast.error("Informe o ticker");
+          const q = await fetchQuote(ticker.toUpperCase().trim());
+          if (!q) return toast.error("Não foi possível buscar cotação");
+          setPrice(String(q.price));
+          setChange(String(q.change));
+          toast.success("Cotação atualizada");
+        }}>
+          <RefreshCw className="h-3 w-3" /> Buscar cotação
+        </Button>
       </div>
       <DialogFooter>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
