@@ -104,12 +104,32 @@ function CarteiraPage() {
           <h1 className="text-xl font-semibold">Carteira</h1>
           <p className="text-sm text-muted-foreground">Ações, FIIs e ETFs do portfólio</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button><Plus className="h-4 w-4" /> Novo ativo</Button>
-          </DialogTrigger>
-          <StockDialog onClose={() => setOpen(false)} />
-        </Dialog>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={async () => {
+            const list = stocksQ.data ?? [];
+            if (!list.length) return;
+            toast.info("Atualizando cotações...");
+            let ok = 0;
+            await Promise.all(list.map(async (s) => {
+              const q = await fetchQuote(s.ticker);
+              if (!q) return;
+              const { error } = await supabase.from("stocks")
+                .update({ current_price: q.price, daily_change: q.change })
+                .eq("id", s.id);
+              if (!error) ok++;
+            }));
+            qc.invalidateQueries({ queryKey: ["stocks"] });
+            toast.success(`${ok}/${list.length} cotações atualizadas`);
+          }}>
+            <RefreshCw className="h-4 w-4" /> Atualizar preços
+          </Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button><Plus className="h-4 w-4" /> Novo ativo</Button>
+            </DialogTrigger>
+            <StockDialog onClose={() => setOpen(false)} />
+          </Dialog>
+        </div>
       </div>
 
       <Card className="bg-surface border-border overflow-hidden">
