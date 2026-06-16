@@ -110,14 +110,16 @@ function CarteiraPage() {
             if (!list.length) return;
             toast.info("Atualizando cotações...");
             let ok = 0;
-            await Promise.all(list.map(async (s) => {
+            for (const s of list) {
               const q = await fetchQuote(s.ticker);
-              if (!q) return;
-              const { error } = await supabase.from("stocks")
-                .update({ current_price: q.price, daily_change: q.change })
-                .eq("id", s.id);
-              if (!error) ok++;
-            }));
+              if (q) {
+                const { error } = await supabase.from("stocks")
+                  .update({ current_price: q.price, daily_change: q.change })
+                  .eq("id", s.id);
+                if (!error) ok++;
+              }
+              await new Promise((r) => setTimeout(r, 350));
+            }
             qc.invalidateQueries({ queryKey: ["stocks"] });
             toast.success(`${ok}/${list.length} cotações atualizadas`);
           }}>
