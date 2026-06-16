@@ -25,6 +25,23 @@ async function fetchQuote(ticker: string): Promise<{ price: number; change: numb
   } catch { return null; }
 }
 
+async function fetchQuotesBatch(tickers: string[]): Promise<Record<string, { price: number; change: number }>> {
+  const out: Record<string, { price: number; change: number }> = {};
+  if (!tickers.length) return out;
+  try {
+    const res = await fetch(`https://brapi.dev/api/quote/${tickers.join(",")}?range=1d&interval=1d`);
+    if (!res.ok) return out;
+    const json = await res.json();
+    for (const r of json?.results ?? []) {
+      if (r?.symbol) out[r.symbol] = {
+        price: Number(r.regularMarketPrice) || 0,
+        change: Number(r.regularMarketChangePercent) || 0,
+      };
+    }
+  } catch {/* ignore */}
+  return out;
+}
+
 export const Route = createFileRoute("/_authenticated/carteira")({
   component: CarteiraPage,
 });
@@ -109,15 +126,16 @@ function CarteiraPage() {
             const list = stocksQ.data ?? [];
             if (!list.length) return;
             toast.info("Atualizando cotações...");
+            const quotes = await fetchQuotesBatch(list.map((s) => s.ticker));
             let ok = 0;
-            await Promise.all(list.map(async (s) => {
-              const q = await fetchQuote(s.ticker);
-              if (!q) return;
+            for (const s of list) {
+              const q = quotes[s.ticker];
+              if (!q) continue;
               const { error } = await supabase.from("stocks")
                 .update({ current_price: q.price, daily_change: q.change })
                 .eq("id", s.id);
               if (!error) ok++;
-            }));
+            }
             qc.invalidateQueries({ queryKey: ["stocks"] });
             toast.success(`${ok}/${list.length} cotações atualizadas`);
           }}>
