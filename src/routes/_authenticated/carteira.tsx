@@ -176,22 +176,45 @@ function StockDialog({ onClose }: { onClose: () => void }) {
   const [price, setPrice] = useState("");
   const [change, setChange] = useState("0");
   const [avg, setAvg] = useState("");
+  const [qty, setQty] = useState("");
 
   const create = useMutation({
     mutationFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) throw new Error("Não autenticado");
+      const tk = ticker.toUpperCase().trim();
+      const quantity = Number(qty) || 0;
+      const avgNum = avg ? Number(avg) : null;
       const { error } = await supabase.from("stocks").insert({
         user_id: u.user.id,
-        ticker: ticker.toUpperCase().trim(),
+        ticker: tk,
         asset_type: assetType as never,
         current_price: Number(price) || 0,
         daily_change: Number(change) || 0,
-        manual_avg_price: avg ? Number(avg) : null,
+        manual_avg_price: avgNum,
       });
       if (error) throw error;
+      if (quantity > 0) {
+        const unit = avgNum ?? Number(price) ?? 0;
+        const { error: mErr } = await supabase.from("stock_movements").insert({
+          user_id: u.user.id,
+          stock_ticker: tk,
+          event_type: "SALDO_INICIAL" as never,
+          date: new Date().toISOString().slice(0, 10),
+          quantity,
+          price: unit,
+          total_value: quantity * unit,
+          origin: "Cadastro inicial",
+        });
+        if (mErr) throw mErr;
+      }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["stocks"] }); toast.success("Ativo cadastrado"); onClose(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stocks"] });
+      qc.invalidateQueries({ queryKey: ["movements"] });
+      toast.success("Ativo cadastrado");
+      onClose();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
