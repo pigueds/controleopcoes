@@ -11,8 +11,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { aggregatePosition, callCoverage, fmtMoney, fmtPct, recommendation } from "@/lib/options-utils";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+
+async function fetchQuote(ticker: string): Promise<{ price: number; change: number } | null> {
+  try {
+    const res = await fetch(`https://brapi.dev/api/quote/${ticker}?range=1d&interval=1d`);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const r = json?.results?.[0];
+    if (!r) return null;
+    return { price: Number(r.regularMarketPrice) || 0, change: Number(r.regularMarketChangePercent) || 0 };
+  } catch { return null; }
+}
 
 export const Route = createFileRoute("/_authenticated/carteira")({
   component: CarteiraPage,
@@ -93,12 +104,32 @@ function CarteiraPage() {
           <h1 className="text-xl font-semibold">Carteira</h1>
           <p className="text-sm text-muted-foreground">Ações, FIIs e ETFs do portfólio</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button><Plus className="h-4 w-4" /> Novo ativo</Button>
-          </DialogTrigger>
-          <StockDialog onClose={() => setOpen(false)} />
-        </Dialog>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={async () => {
+            const list = stocksQ.data ?? [];
+            if (!list.length) return;
+            toast.info("Atualizando cotações...");
+            let ok = 0;
+            await Promise.all(list.map(async (s) => {
+              const q = await fetchQuote(s.ticker);
+              if (!q) return;
+              const { error } = await supabase.from("stocks")
+                .update({ current_price: q.price, daily_change: q.change })
+                .eq("id", s.id);
+              if (!error) ok++;
+            }));
+            qc.invalidateQueries({ queryKey: ["stocks"] });
+            toast.success(`${ok}/${list.length} cotações atualizadas`);
+          }}>
+            <RefreshCw className="h-4 w-4" /> Atualizar preços
+          </Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button><Plus className="h-4 w-4" /> Novo ativo</Button>
+            </DialogTrigger>
+            <StockDialog onClose={() => setOpen(false)} />
+          </Dialog>
+        </div>
       </div>
 
       <Card className="bg-surface border-border overflow-hidden">
@@ -165,22 +196,45 @@ function StockDialog({ onClose }: { onClose: () => void }) {
   const [price, setPrice] = useState("");
   const [change, setChange] = useState("0");
   const [avg, setAvg] = useState("");
+  const [qty, setQty] = useState("");
 
   const create = useMutation({
     mutationFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) throw new Error("Não autenticado");
+      const tk = ticker.toUpperCase().trim();
+      const quantity = Number(qty) || 0;
+      const avgNum = avg ? Number(avg) : null;
       const { error } = await supabase.from("stocks").insert({
         user_id: u.user.id,
-        ticker: ticker.toUpperCase().trim(),
+        ticker: tk,
         asset_type: assetType as never,
         current_price: Number(price) || 0,
         daily_change: Number(change) || 0,
-        manual_avg_price: avg ? Number(avg) : null,
+        manual_avg_price: avgNum,
       });
       if (error) throw error;
+      if (quantity > 0) {
+        const unit = avgNum ?? Number(price) ?? 0;
+        const { error: mErr } = await supabase.from("stock_movements").insert({
+          user_id: u.user.id,
+          stock_ticker: tk,
+          event_type: "SALDO_INICIAL" as never,
+          date: new Date().toISOString().slice(0, 10),
+          quantity,
+          price: unit,
+          total_value: quantity * unit,
+          origin: "Cadastro inicial",
+        });
+        if (mErr) throw mErr;
+      }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["stocks"] }); toast.success("Ativo cadastrado"); onClose(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stocks"] });
+      qc.invalidateQueries({ queryKey: ["movements"] });
+      toast.success("Ativo cadastrado");
+      onClose();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -206,8 +260,20 @@ function StockDialog({ onClose }: { onClose: () => void }) {
           <div><Label>Preço atual</Label><Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} /></div>
           <div><Label>Var. dia (%)</Label><Input type="number" step="0.01" value={change} onChange={(e) => setChange(e.target.value)} /></div>
         </div>
-        <div><Label>Preço médio (opcional, sobrescreve cálculo das movimentações)</Label>
-          <Input type="number" step="0.01" value={avg} onChange={(e) => setAvg(e.target.value)} /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><Label>Quantidade</Label><Input type="number" step="1" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="100" /></div>
+          <div><Label>Preço médio (opcional)</Label><Input type="number" step="0.01" value={avg} onChange={(e) => setAvg(e.target.value)} /></div>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={async () => {
+          if (!ticker) return toast.error("Informe o ticker");
+          const q = await fetchQuote(ticker.toUpperCase().trim());
+          if (!q) return toast.error("Não foi possível buscar cotação");
+          setPrice(String(q.price));
+          setChange(String(q.change));
+          toast.success("Cotação atualizada");
+        }}>
+          <RefreshCw className="h-3 w-3" /> Buscar cotação
+        </Button>
       </div>
       <DialogFooter>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
