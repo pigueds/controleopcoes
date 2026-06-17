@@ -196,6 +196,7 @@ function CarteiraPage() {
 
 function StockDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const getQuotes = useServerFn(fetchQuotes);
   const [ticker, setTicker] = useState("");
   const [assetType, setAssetType] = useState("ACAO");
   const [price, setPrice] = useState("");
@@ -271,7 +272,10 @@ function StockDialog({ onClose }: { onClose: () => void }) {
         </div>
         <Button type="button" variant="outline" size="sm" onClick={async () => {
           if (!ticker) return toast.error("Informe o ticker");
-          const q = await fetchQuote(ticker.toUpperCase().trim());
+          const tk = ticker.toUpperCase().trim();
+          const { quotes, error } = await getQuotes({ data: { tickers: [tk] } });
+          if (error) toast.error(`Erro ao buscar cotação: ${error}`);
+          const q = quotes[tk];
           if (!q) return toast.error("Não foi possível buscar cotação");
           setPrice(String(q.price));
           setChange(String(q.change));
