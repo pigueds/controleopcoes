@@ -14,32 +14,17 @@ import { aggregatePosition, callCoverage, fmtMoney, fmtPct, recommendation } fro
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { fetchQuotes } from "@/lib/quotes.functions";
+
 async function fetchQuote(ticker: string): Promise<{ price: number; change: number } | null> {
-  try {
-    const res = await fetch(`https://brapi.dev/api/quote/${ticker}?range=1d&interval=1d`);
-    if (!res.ok) return null;
-    const json = await res.json();
-    const r = json?.results?.[0];
-    if (!r) return null;
-    return { price: Number(r.regularMarketPrice) || 0, change: Number(r.regularMarketChangePercent) || 0 };
-  } catch { return null; }
+  const { quotes } = await fetchQuotes({ data: { tickers: [ticker] } });
+  return quotes[ticker] ?? null;
 }
 
 async function fetchQuotesBatch(tickers: string[]): Promise<Record<string, { price: number; change: number }>> {
-  const out: Record<string, { price: number; change: number }> = {};
-  if (!tickers.length) return out;
-  try {
-    const res = await fetch(`https://brapi.dev/api/quote/${tickers.join(",")}?range=1d&interval=1d`);
-    if (!res.ok) return out;
-    const json = await res.json();
-    for (const r of json?.results ?? []) {
-      if (r?.symbol) out[r.symbol] = {
-        price: Number(r.regularMarketPrice) || 0,
-        change: Number(r.regularMarketChangePercent) || 0,
-      };
-    }
-  } catch {/* ignore */}
-  return out;
+  if (!tickers.length) return {};
+  const { quotes } = await fetchQuotes({ data: { tickers } });
+  return quotes;
 }
 
 export const Route = createFileRoute("/_authenticated/carteira")({
