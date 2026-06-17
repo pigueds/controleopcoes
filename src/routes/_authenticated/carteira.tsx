@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -16,17 +17,6 @@ import { toast } from "sonner";
 
 import { fetchQuotes } from "@/lib/quotes.functions";
 
-async function fetchQuote(ticker: string): Promise<{ price: number; change: number } | null> {
-  const { quotes } = await fetchQuotes({ data: { tickers: [ticker] } });
-  return quotes[ticker] ?? null;
-}
-
-async function fetchQuotesBatch(tickers: string[]): Promise<Record<string, { price: number; change: number }>> {
-  if (!tickers.length) return {};
-  const { quotes } = await fetchQuotes({ data: { tickers } });
-  return quotes;
-}
-
 export const Route = createFileRoute("/_authenticated/carteira")({
   component: CarteiraPage,
 });
@@ -38,6 +28,7 @@ type Stock = {
 
 function CarteiraPage() {
   const qc = useQueryClient();
+  const getQuotes = useServerFn(fetchQuotes);
   const [open, setOpen] = useState(false);
 
   const stocksQ = useQuery({
@@ -111,18 +102,29 @@ function CarteiraPage() {
             const list = stocksQ.data ?? [];
             if (!list.length) return;
             toast.info("Atualizando cotações...");
-            const quotes = await fetchQuotesBatch(list.map((s) => s.ticker));
+            const { quotes, error: quoteError } = await getQuotes({ data: { tickers: list.map((s) => s.ticker) } });
+            if (quoteError) toast.error(`Erro ao buscar cotações: ${quoteError}`);
             let ok = 0;
+            let failed = 0;
             for (const s of list) {
-              const q = quotes[s.ticker];
-              if (!q) continue;
+              const q = quotes[s.ticker.trim().toUpperCase()];
+              if (!q) {
+                failed++;
+                continue;
+              }
               const { error } = await supabase.from("stocks")
                 .update({ current_price: q.price, daily_change: q.change })
                 .eq("id", s.id);
-              if (!error) ok++;
+              if (error) {
+                failed++;
+                toast.error(`Erro ao salvar ${s.ticker}: ${error.message}`);
+              } else {
+                ok++;
+              }
             }
             qc.invalidateQueries({ queryKey: ["stocks"] });
-            toast.success(`${ok}/${list.length} cotações atualizadas`);
+            if (ok > 0) toast.success(`${ok}/${list.length} cotações atualizadas`);
+            if (failed > 0) toast.warning(`${failed} ticker(s) não retornaram cotação`);
           }}>
             <RefreshCw className="h-4 w-4" /> Atualizar preços
           </Button>
