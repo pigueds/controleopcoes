@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet, redirect, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Briefcase, PhoneCall, ShieldAlert, LogOut, TrendingUp, Menu, X } from "lucide-react";
+import { LayoutDashboard, Briefcase, PhoneCall, ShieldAlert, LogOut, TrendingUp, Menu, X, Receipt, History } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,9 +17,12 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 const NAV = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/carteira", label: "Carteira", icon: Briefcase },
   { to: "/calls", label: "Calls", icon: PhoneCall },
   { to: "/puts", label: "Puts", icon: ShieldAlert },
+  { to: "/darf", label: "DARF", icon: Receipt },
+  { to: "/movimentacoes", label: "Movimentações", icon: History },
 ];
 
 function AuthedLayout() {
@@ -82,12 +85,6 @@ function AuthedLayout() {
               </Link>
             );
           })}
-          <div className="px-2 pt-5 pb-2 text-[10px] uppercase tracking-wider text-muted-foreground">Em breve</div>
-          {["Dashboard", "DARF", "Movimentações"].map((l) => (
-            <div key={l} className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground/60 cursor-not-allowed">
-              <LayoutDashboard className="h-4 w-4" /> {l}
-            </div>
-          ))}
         </nav>
 
         <div className="border-t border-border p-3 space-y-2">

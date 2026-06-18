@@ -13,6 +13,9 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedPutsRouteImport } from './routes/_authenticated/puts'
+import { Route as AuthenticatedMovimentacoesRouteImport } from './routes/_authenticated/movimentacoes'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedDarfRouteImport } from './routes/_authenticated/darf'
 import { Route as AuthenticatedCarteiraRouteImport } from './routes/_authenticated/carteira'
 import { Route as AuthenticatedCallsRouteImport } from './routes/_authenticated/calls'
 
@@ -35,6 +38,22 @@ const AuthenticatedPutsRoute = AuthenticatedPutsRouteImport.update({
   path: '/puts',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMovimentacoesRoute =
+  AuthenticatedMovimentacoesRouteImport.update({
+    id: '/movimentacoes',
+    path: '/movimentacoes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedDarfRoute = AuthenticatedDarfRouteImport.update({
+  id: '/darf',
+  path: '/darf',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedCarteiraRoute = AuthenticatedCarteiraRouteImport.update({
   id: '/carteira',
   path: '/carteira',
@@ -51,6 +70,9 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/calls': typeof AuthenticatedCallsRoute
   '/carteira': typeof AuthenticatedCarteiraRoute
+  '/darf': typeof AuthenticatedDarfRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/movimentacoes': typeof AuthenticatedMovimentacoesRoute
   '/puts': typeof AuthenticatedPutsRoute
 }
 export interface FileRoutesByTo {
@@ -58,6 +80,9 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/calls': typeof AuthenticatedCallsRoute
   '/carteira': typeof AuthenticatedCarteiraRoute
+  '/darf': typeof AuthenticatedDarfRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/movimentacoes': typeof AuthenticatedMovimentacoesRoute
   '/puts': typeof AuthenticatedPutsRoute
 }
 export interface FileRoutesById {
@@ -67,13 +92,32 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/calls': typeof AuthenticatedCallsRoute
   '/_authenticated/carteira': typeof AuthenticatedCarteiraRoute
+  '/_authenticated/darf': typeof AuthenticatedDarfRoute
+  '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/movimentacoes': typeof AuthenticatedMovimentacoesRoute
   '/_authenticated/puts': typeof AuthenticatedPutsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/calls' | '/carteira' | '/puts'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/calls'
+    | '/carteira'
+    | '/darf'
+    | '/dashboard'
+    | '/movimentacoes'
+    | '/puts'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/calls' | '/carteira' | '/puts'
+  to:
+    | '/'
+    | '/auth'
+    | '/calls'
+    | '/carteira'
+    | '/darf'
+    | '/dashboard'
+    | '/movimentacoes'
+    | '/puts'
   id:
     | '__root__'
     | '/'
@@ -81,6 +125,9 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/calls'
     | '/_authenticated/carteira'
+    | '/_authenticated/darf'
+    | '/_authenticated/dashboard'
+    | '/_authenticated/movimentacoes'
     | '/_authenticated/puts'
   fileRoutesById: FileRoutesById
 }
@@ -120,6 +167,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPutsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/movimentacoes': {
+      id: '/_authenticated/movimentacoes'
+      path: '/movimentacoes'
+      fullPath: '/movimentacoes'
+      preLoaderRoute: typeof AuthenticatedMovimentacoesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/darf': {
+      id: '/_authenticated/darf'
+      path: '/darf'
+      fullPath: '/darf'
+      preLoaderRoute: typeof AuthenticatedDarfRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/carteira': {
       id: '/_authenticated/carteira'
       path: '/carteira'
@@ -140,12 +208,18 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCallsRoute: typeof AuthenticatedCallsRoute
   AuthenticatedCarteiraRoute: typeof AuthenticatedCarteiraRoute
+  AuthenticatedDarfRoute: typeof AuthenticatedDarfRoute
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedMovimentacoesRoute: typeof AuthenticatedMovimentacoesRoute
   AuthenticatedPutsRoute: typeof AuthenticatedPutsRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCallsRoute: AuthenticatedCallsRoute,
   AuthenticatedCarteiraRoute: AuthenticatedCarteiraRoute,
+  AuthenticatedDarfRoute: AuthenticatedDarfRoute,
+  AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedMovimentacoesRoute: AuthenticatedMovimentacoesRoute,
   AuthenticatedPutsRoute: AuthenticatedPutsRoute,
 }
 
@@ -160,13 +234,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
