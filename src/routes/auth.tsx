@@ -28,7 +28,7 @@ function AuthPage() {
     setLoading(false);
     if (error) return toast.error(error.message);
     toast.success("Bem-vindo de volta!");
-    navigate({ to: "/carteira" });
+    navigate({ to: "/dashboard" });
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -50,7 +50,7 @@ function AuthPage() {
     });
     if (result.error) return toast.error(result.error.message ?? "Falha no login");
     if (result.redirected) return;
-    navigate({ to: "/carteira" });
+    navigate({ to: "/dashboard" });
   };
 
   return (
