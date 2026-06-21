@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,7 @@ import { aggregatePosition, callCoverage, fmtMoney, fmtPct, recommendation } fro
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { fetchQuotes } from "@/lib/quotes.functions";
+import { fetchQuotes } from "@/lib/quotes";
 
 export const Route = createFileRoute("/_authenticated/carteira")({
   component: CarteiraPage,
@@ -28,7 +27,6 @@ type Stock = {
 
 function CarteiraPage() {
   const qc = useQueryClient();
-  const getQuotes = useServerFn(fetchQuotes);
   const [open, setOpen] = useState(false);
 
   const stocksQ = useQuery({
@@ -102,7 +100,7 @@ function CarteiraPage() {
             const list = stocksQ.data ?? [];
             if (!list.length) return;
             toast.info("Atualizando cotações...");
-            const { quotes, error: quoteError } = await getQuotes({ data: { tickers: list.map((s) => s.ticker) } });
+            const { quotes, error: quoteError } = await fetchQuotes(list.map((s) => s.ticker));
             if (quoteError) toast.error(`Erro ao buscar cotações: ${quoteError}`);
             let ok = 0;
             let failed = 0;
@@ -196,7 +194,6 @@ function CarteiraPage() {
 
 function StockDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
-  const getQuotes = useServerFn(fetchQuotes);
   const [ticker, setTicker] = useState("");
   const [assetType, setAssetType] = useState("ACAO");
   const [price, setPrice] = useState("");
@@ -273,7 +270,7 @@ function StockDialog({ onClose }: { onClose: () => void }) {
         <Button type="button" variant="outline" size="sm" onClick={async () => {
           if (!ticker) return toast.error("Informe o ticker");
           const tk = ticker.toUpperCase().trim();
-          const { quotes, error } = await getQuotes({ data: { tickers: [tk] } });
+          const { quotes, error } = await fetchQuotes([tk]);
           if (error) toast.error(`Erro ao buscar cotação: ${error}`);
           const q = quotes[tk];
           if (!q) return toast.error("Não foi possível buscar cotação");

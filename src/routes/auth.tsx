@@ -20,6 +20,7 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const appUrl = new URL(import.meta.env.BASE_URL, window.location.origin).toString();
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +38,7 @@ function AuthPage() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: appUrl },
     });
     setLoading(false);
     if (error) return toast.error(error.message);
@@ -46,7 +47,7 @@ function AuthPage() {
 
   const handleGoogle = async () => {
     const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
+      redirect_uri: appUrl,
     });
     if (result.error) return toast.error(result.error.message ?? "Falha no login");
     if (result.redirected) return;
