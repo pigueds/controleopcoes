@@ -12,9 +12,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   capitalCommitted, currentResult, daysUntil, fmtDate, fmtMoney, fmtPct,
-  parseOptionTicker, premiumTotal, resolveExpirationDate, resolveStockTicker, strikeDiff,
+  parseOptionTicker, premiumTotal, resolveExpirationDate, resolveStockTicker,
 } from "@/lib/options-utils";
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 type OptionRow = {
@@ -27,6 +27,7 @@ type OptionRow = {
 export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<OptionRow | null>(null);
   const [filter, setFilter] = useState<"ALL" | "ABERTA" | "ENCERRADA" | "EXERCIDA">("ALL");
 
   const optionsQ = useQuery({
@@ -34,7 +35,7 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("options").select("*")
-        .eq("option_type", kind).order("expiration_date", { ascending: false });
+        .eq("option_type", kind);
       if (error) throw error;
       return (data ?? []) as OptionRow[];
     },
@@ -70,8 +71,23 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
 
   const list = useMemo(() => {
     const data = optionsQ.data ?? [];
-    return filter === "ALL" ? data : data.filter((o) => o.status === filter);
+    const filtered = filter === "ALL" ? data : data.filter((o) => o.status === filter);
+    // Ordenação: ABERTAs primeiro (mais próximas do vencimento antes), depois demais (mais recentes antes)
+    return [...filtered].sort((a, b) => {
+      const aOpen = a.status === "ABERTA" ? 0 : 1;
+      const bOpen = b.status === "ABERTA" ? 0 : 1;
+      if (aOpen !== bOpen) return aOpen - bOpen;
+      if (aOpen === 0) return a.expiration_date.localeCompare(b.expiration_date);
+      return b.expiration_date.localeCompare(a.expiration_date);
+    });
   }, [optionsQ.data, filter]);
+
+  const totalCapitalPuts = useMemo(() => {
+    if (kind !== "PUT") return 0;
+    return list
+      .filter((o) => o.status === "ABERTA")
+      .reduce((acc, o) => acc + capitalCommitted(Number(o.strike), Number(o.quantity)), 0);
+  }, [list, kind]);
 
   return (
     <div className="space-y-4">
@@ -110,7 +126,9 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
                 <TableHead className="text-right">Qtd</TableHead>
                 <TableHead className="text-right">Preço entrada</TableHead>
                 <TableHead className="text-right">Strike</TableHead>
+                <TableHead className="text-right">Preço ação</TableHead>
                 <TableHead className="text-right">Strike dif %</TableHead>
+                <TableHead className="text-right">% Prêmio</TableHead>
                 {kind === "PUT" && <TableHead className="text-right">Cap. comprometido</TableHead>}
                 <TableHead>Vencimento</TableHead>
                 <TableHead className="text-right">Dias</TableHead>
@@ -122,14 +140,16 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
             </TableHeader>
             <TableBody>
               {list.length === 0 && (
-                <TableRow><TableCell colSpan={kind === "PUT" ? 14 : 13} className="text-center text-muted-foreground py-10">
+                <TableRow><TableCell colSpan={kind === "PUT" ? 16 : 15} className="text-center text-muted-foreground py-10">
                   Nenhuma operação registrada.
                 </TableCell></TableRow>
               )}
               {list.map((o) => {
                 const sPrice = stockPrice(o.stock_ticker);
                 const premio = premiumTotal(Number(o.quantity), Number(o.entry_price));
-                const diff = strikeDiff(sPrice, Number(o.strike));
+                // Diff: (preço ação - strike) / strike — positivo = ação acima do strike
+                const diff = Number(o.strike) > 0 ? (sPrice - Number(o.strike)) / Number(o.strike) : 0;
+                const pctPremio = Number(o.strike) > 0 ? Number(o.entry_price) / Number(o.strike) : 0;
                 const dias = daysUntil(o.expiration_date);
                 const result = o.status === "ENCERRADA"
                   ? currentResult(premio, Number(o.exit_price), Number(o.quantity))
@@ -142,7 +162,9 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
                     <TableCell className="text-right tabular">{o.quantity}</TableCell>
                     <TableCell className="text-right tabular">{fmtMoney(Number(o.entry_price))}</TableCell>
                     <TableCell className="text-right tabular">{fmtMoney(Number(o.strike))}</TableCell>
-                    <TableCell className={`text-right tabular ${diff >= 0 ? "text-profit" : "text-loss"}`}>{fmtPct(diff)}</TableCell>
+                    <TableCell className="text-right tabular">{sPrice > 0 ? fmtMoney(sPrice) : "—"}</TableCell>
+                    <TableCell className={`text-right tabular ${diff >= 0 ? "text-profit" : "text-loss"}`}>{sPrice > 0 ? fmtPct(diff) : "—"}</TableCell>
+                    <TableCell className="text-right tabular">{fmtPct(pctPremio)}</TableCell>
                     {kind === "PUT" && <TableCell className="text-right tabular">{fmtMoney(capitalCommitted(Number(o.strike), Number(o.quantity)))}</TableCell>}
                     <TableCell>{fmtDate(o.expiration_date)}</TableCell>
                     <TableCell className="text-right tabular">
@@ -175,9 +197,14 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
                       {result == null ? "—" : fmtMoney(result)}
                     </TableCell>
                     <TableCell>
-                      <Button size="icon" variant="ghost" onClick={() => remove.mutate(o.id)}>
-                        <Trash2 className="h-4 w-4 text-loss" />
-                      </Button>
+                      <div className="flex gap-1 justify-end">
+                        <Button size="icon" variant="ghost" onClick={() => setEditing(o)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => remove.mutate(o.id)}>
+                          <Trash2 className="h-4 w-4 text-loss" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -186,57 +213,70 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
           </Table>
         </div>
       </Card>
+
+      {kind === "PUT" && (
+        <Card className="bg-surface border-border p-4 flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">Capital comprometido com puts abertas (notional)</span>
+          <span className="text-lg font-semibold tabular">{fmtMoney(totalCapitalPuts)}</span>
+        </Card>
+      )}
+
+      <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
+        {editing && <OptionDialog kind={kind} option={editing} onClose={() => setEditing(null)} />}
+      </Dialog>
     </div>
   );
 }
 
-function OptionDialog({ kind, onClose }: { kind: "CALL" | "PUT"; onClose: () => void }) {
+function OptionDialog({ kind, onClose, option }: { kind: "CALL" | "PUT"; onClose: () => void; option?: OptionRow }) {
   const qc = useQueryClient();
   const refStocks = useRefStocks();
   const refExp = useRefExpirations();
+  const isEdit = !!option;
 
-  const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
-  const [quantity, setQuantity] = useState("");
-  const [ticker, setTicker] = useState("");
-  const [entryPrice, setEntryPrice] = useState("");
-  const [strike, setStrike] = useState("");
-  const [stockTicker, setStockTicker] = useState("");
-  const [expDate, setExpDate] = useState("");
+  const [entryDate, setEntryDate] = useState(option?.entry_date ?? new Date().toISOString().slice(0, 10));
+  const [quantity, setQuantity] = useState(option ? String(option.quantity) : "");
+  const [ticker, setTicker] = useState(option?.option_ticker ?? "");
+  const [entryPrice, setEntryPrice] = useState(option ? String(option.entry_price) : "");
+  const [strike, setStrike] = useState(option ? String(option.strike) : "");
+  const [stockTicker, setStockTicker] = useState(option?.stock_ticker ?? "");
+  const [expDate, setExpDate] = useState(option?.expiration_date ?? "");
 
-  // Auto-fill from ticker
+  // Auto-fill from ticker (apenas em criação)
   useEffect(() => {
+    if (isEdit) return;
     if (!ticker || !refStocks.data || !refExp.data) return;
-    const parsed = parseOptionTicker(ticker);
-    if (parsed.type && parsed.type !== kind) {
-      // mismatch is just visual, but warn
-    }
     const stk = resolveStockTicker(ticker, refStocks.data);
     if (stk && !stockTicker) setStockTicker(stk);
     const exp = resolveExpirationDate(entryDate, ticker, refExp.data);
     if (exp && !expDate) setExpDate(exp);
   }, [ticker, entryDate, refStocks.data, refExp.data]);
 
-  const create = useMutation({
+  const save = useMutation({
     mutationFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user) throw new Error("Não autenticado");
-      if (!expDate) throw new Error("Vencimento não identificado — verifique o ticker ou cadastre a referência");
+      if (!expDate) throw new Error("Vencimento não identificado");
       if (!stockTicker) throw new Error("Ação relacionada não identificada");
-      const { error } = await supabase.from("options").insert({
-        user_id: u.user.id,
+      const payload = {
         option_type: kind,
         entry_date: entryDate,
         quantity: Number(quantity),
         option_ticker: ticker.toUpperCase(),
         entry_price: Number(entryPrice),
         strike: Number(strike),
-        stock_ticker: stockTicker,
+        stock_ticker: stockTicker.toUpperCase(),
         expiration_date: expDate,
-        status: "ABERTA",
-      });
-      if (error) throw error;
+      };
+      if (isEdit && option) {
+        const { error } = await supabase.from("options").update(payload).eq("id", option.id);
+        if (error) throw error;
+      } else {
+        const { data: u } = await supabase.auth.getUser();
+        if (!u.user) throw new Error("Não autenticado");
+        const { error } = await supabase.from("options").insert({ ...payload, user_id: u.user.id, status: "ABERTA" });
+        if (error) throw error;
+      }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["options", kind] }); toast.success("Operação registrada"); onClose(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["options", kind] }); toast.success(isEdit ? "Atualizada" : "Operação registrada"); onClose(); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -244,7 +284,7 @@ function OptionDialog({ kind, onClose }: { kind: "CALL" | "PUT"; onClose: () => 
 
   return (
     <DialogContent>
-      <DialogHeader><DialogTitle>Nova {kind === "CALL" ? "call" : "put"}</DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle>{isEdit ? "Editar" : "Nova"} {kind === "CALL" ? "call" : "put"}</DialogTitle></DialogHeader>
       <div className="grid gap-3">
         <div className="grid grid-cols-2 gap-3">
           <div><Label>Data de entrada</Label><Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} /></div>
@@ -269,7 +309,7 @@ function OptionDialog({ kind, onClose }: { kind: "CALL" | "PUT"; onClose: () => 
       </div>
       <DialogFooter>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button onClick={() => create.mutate()} disabled={!ticker || !quantity || !entryPrice || !strike}>Salvar</Button>
+        <Button onClick={() => save.mutate()} disabled={!ticker || !quantity || !entryPrice || !strike}>Salvar</Button>
       </DialogFooter>
     </DialogContent>
   );
