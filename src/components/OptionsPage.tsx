@@ -132,6 +132,23 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
       .reduce((acc, o) => acc + capitalCommitted(Number(o.strike), Number(o.quantity)), 0);
   }, [list, kind]);
 
+  // Capital investido em LFTB11: soma dos movimentos (quantidade) * preço atual do ativo.
+  const lftbQ = useQuery({
+    queryKey: ["lftb-position"],
+    enabled: kind === "PUT",
+    queryFn: async () => {
+      const [{ data: stock }, { data: moves }] = await Promise.all([
+        supabase.from("stocks").select("current_price").eq("ticker", "LFTB11").maybeSingle(),
+        supabase.from("stock_movements").select("event_type, quantity, price, total_value, stock_ticker").eq("stock_ticker", "LFTB11"),
+      ]);
+      const agg = aggregatePosition((moves ?? []) as never);
+      const price = Number(stock?.current_price ?? 0);
+      return agg.quantity * (price || agg.avgPrice);
+    },
+  });
+  const lftbValue = Number(lftbQ.data ?? 0);
+  const notionalOk = totalCapitalPuts <= lftbValue;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
