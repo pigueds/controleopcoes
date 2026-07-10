@@ -58,11 +58,54 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
   });
 
   const updateStatus = useMutation({
-    mutationFn: async ({ id, status, exit_price, exit_date }: { id: string; status: OptionRow["status"]; exit_price?: number | null; exit_date?: string | null }) => {
-      const { error } = await supabase.from("options").update({ status, exit_price: exit_price ?? null, exit_date: exit_date ?? null }).eq("id", id);
+    mutationFn: async ({ opt, status, exit_price, exit_date }: { opt: OptionRow; status: OptionRow["status"]; exit_price?: number | null; exit_date?: string | null }) => {
+      const { error } = await supabase.from("options")
+        .update({ status, exit_price: exit_price ?? null, exit_date: exit_date ?? null })
+        .eq("id", opt.id);
       if (error) throw error;
+
+      // PUT exercida → incorporar ações na carteira (movimento EXERCICIO_PUT usa strike como preço).
+      if (status === "EXERCIDA" && opt.option_type === "PUT") {
+        const { data: u } = await supabase.auth.getUser();
+        if (!u.user) return;
+        const qty = Number(opt.quantity);
+        const strike = Number(opt.strike);
+        const date = exit_date ?? new Date().toISOString().slice(0, 10);
+
+        // Garante que ativo exista na carteira; se não, cria.
+        const { data: existing } = await supabase
+          .from("stocks").select("id").eq("ticker", opt.stock_ticker).maybeSingle();
+        if (!existing) {
+          await supabase.from("stocks").insert({
+            user_id: u.user.id,
+            ticker: opt.stock_ticker,
+            asset_type: "ACAO" as never,
+            current_price: strike,
+            daily_change: 0,
+            manual_avg_price: null,
+          });
+        }
+        const { error: mErr } = await supabase.from("stock_movements").insert({
+          user_id: u.user.id,
+          stock_ticker: opt.stock_ticker,
+          event_type: "EXERCICIO_PUT" as never,
+          date,
+          quantity: qty,
+          price: strike,
+          total_value: qty * strike,
+          origin: `PUT exercida ${opt.option_ticker}`,
+        });
+        if (mErr) throw mErr;
+      }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["options", kind] }); toast.success("Atualizado"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["options", kind] });
+      qc.invalidateQueries({ queryKey: ["stocks"] });
+      qc.invalidateQueries({ queryKey: ["movements"] });
+      qc.invalidateQueries({ queryKey: ["stocks-prices"] });
+      qc.invalidateQueries({ queryKey: ["lftb-position"] });
+      toast.success("Atualizado");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
