@@ -101,28 +101,26 @@ function CarteiraPage() {
             if (!list.length) return;
             toast.info("Atualizando cotações...");
             const { quotes, error: quoteError } = await fetchQuotes(list.map((s) => s.ticker));
-            if (quoteError) toast.error(`Erro ao buscar cotações: ${quoteError}`);
+            if (quoteError) console.warn("[quotes] parcial:", quoteError);
             let ok = 0;
-            let failed = 0;
-            for (const s of list) {
+            const failed: string[] = [];
+            await Promise.all(list.map(async (s) => {
               const q = quotes[s.ticker.trim().toUpperCase()];
-              if (!q) {
-                failed++;
-                continue;
-              }
+              if (!q) { failed.push(s.ticker); return; }
               const { error } = await supabase.from("stocks")
                 .update({ current_price: q.price, daily_change: q.change })
                 .eq("id", s.id);
               if (error) {
-                failed++;
-                toast.error(`Erro ao salvar ${s.ticker}: ${error.message}`);
+                failed.push(s.ticker);
+                console.error(`[quotes] erro ao salvar ${s.ticker}:`, error.message);
               } else {
                 ok++;
               }
-            }
+            }));
             qc.invalidateQueries({ queryKey: ["stocks"] });
-            if (ok > 0) toast.success(`${ok}/${list.length} cotações atualizadas`);
-            if (failed > 0) toast.warning(`${failed} ticker(s) não retornaram cotação`);
+            if (ok > 0) toast.success(`${ok} cotação(ões) atualizada(s) com sucesso.`);
+            if (failed.length > 0) toast.warning(`Não foi possível atualizar: ${failed.join(", ")}`);
+            if (ok === 0 && failed.length === 0) toast.error("Nenhuma cotação foi processada.");
           }}>
             <RefreshCw className="h-4 w-4" /> Atualizar preços
           </Button>
