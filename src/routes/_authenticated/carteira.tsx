@@ -206,26 +206,41 @@ function StockDialog({ onClose }: { onClose: () => void }) {
       const tk = ticker.toUpperCase().trim();
       const quantity = Number(qty) || 0;
       const avgNum = avg ? Number(avg) : null;
-      const { error } = await supabase.from("stocks").insert({
-        user_id: u.user.id,
-        ticker: tk,
-        asset_type: assetType as never,
-        current_price: Number(price) || 0,
-        daily_change: Number(change) || 0,
-        manual_avg_price: avgNum,
-      });
-      if (error) throw error;
+      const priceNum = Number(price) || 0;
+      const unit = avgNum ?? priceNum;
+
+      // Verifica se ativo já existe: se sim, apenas soma quantidade via movimento (preço médio recalculado por aggregatePosition).
+      const { data: existing, error: findErr } = await supabase
+        .from("stocks").select("id").eq("ticker", tk).maybeSingle();
+      if (findErr) throw findErr;
+
+      if (!existing) {
+        const { error } = await supabase.from("stocks").insert({
+          user_id: u.user.id,
+          ticker: tk,
+          asset_type: assetType as never,
+          current_price: priceNum,
+          daily_change: Number(change) || 0,
+          manual_avg_price: null,
+        });
+        if (error) throw error;
+      } else if (priceNum > 0) {
+        // Atualiza cotação atual do ativo existente
+        await supabase.from("stocks")
+          .update({ current_price: priceNum, daily_change: Number(change) || 0 })
+          .eq("id", existing.id);
+      }
+
       if (quantity > 0) {
-        const unit = avgNum ?? Number(price) ?? 0;
         const { error: mErr } = await supabase.from("stock_movements").insert({
           user_id: u.user.id,
           stock_ticker: tk,
-          event_type: "SALDO_INICIAL" as never,
+          event_type: (existing ? "COMPRA" : "SALDO_INICIAL") as never,
           date: new Date().toISOString().slice(0, 10),
           quantity,
           price: unit,
           total_value: quantity * unit,
-          origin: "Cadastro inicial",
+          origin: existing ? "Aporte manual" : "Cadastro inicial",
         });
         if (mErr) throw mErr;
       }
