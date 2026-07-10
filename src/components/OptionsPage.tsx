@@ -275,10 +275,16 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
       </Card>
 
       {kind === "PUT" && (
-        <Card className="bg-surface border-border p-4 flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Capital comprometido com puts abertas (notional)</span>
-          <span className="text-lg font-semibold tabular">{fmtMoney(totalCapitalPuts)}</span>
-        </Card>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Card className="bg-surface border-border p-4 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Capital comprometido com puts abertas (notional)</span>
+            <span className={`text-lg font-semibold tabular ${notionalOk ? "text-profit" : "text-loss"}`}>{fmtMoney(totalCapitalPuts)}</span>
+          </Card>
+          <Card className="bg-surface border-border p-4 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Capital investido em LFTB11</span>
+            <span className="text-lg font-semibold tabular">{fmtMoney(lftbValue)}</span>
+          </Card>
+        </div>
       )}
 
       <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
