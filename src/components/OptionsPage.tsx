@@ -223,7 +223,7 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
                     <TableCell className="text-right tabular">{fmtMoney(Number(o.entry_price))}</TableCell>
                     <TableCell className="text-right tabular">{fmtMoney(Number(o.strike))}</TableCell>
                     <TableCell className="text-right tabular">{sPrice > 0 ? fmtMoney(sPrice) : "—"}</TableCell>
-                    <TableCell className={`text-right tabular ${diff >= 0 ? "text-profit" : "text-loss"}`}>{sPrice > 0 ? fmtPct(diff) : "—"}</TableCell>
+                    <TableCell className={`text-right tabular ${sPrice === 0 ? "" : (kind === "CALL" ? (sPrice > Number(o.strike) ? "text-loss" : "text-profit") : (sPrice < Number(o.strike) ? "text-loss" : "text-profit"))}`}>{sPrice > 0 ? fmtPct(diff) : "—"}</TableCell>
                     <TableCell className="text-right tabular">{fmtPct(pctPremio)}</TableCell>
                     {kind === "PUT" && <TableCell className="text-right tabular">{fmtMoney(capitalCommitted(Number(o.strike), Number(o.quantity)))}</TableCell>}
                     <TableCell>{fmtDate(o.expiration_date)}</TableCell>
