@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
-  capitalCommitted, currentResult, daysUntil, fmtDate, fmtMoney, fmtPct,
+  aggregatePosition, capitalCommitted, currentResult, daysUntil, fmtDate, fmtMoney, fmtPct,
   parseOptionTicker, premiumTotal, resolveExpirationDate, resolveStockTicker,
 } from "@/lib/options-utils";
 import { Pencil, Plus, Trash2 } from "lucide-react";
