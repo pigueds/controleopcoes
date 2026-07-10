@@ -219,11 +219,11 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
                         if (v === "ENCERRADA") {
                           const ep = prompt("Preço de saída?");
                           if (ep == null) return;
-                          updateStatus.mutate({ id: o.id, status: "ENCERRADA", exit_price: Number(ep), exit_date: new Date().toISOString().slice(0, 10) });
+                          updateStatus.mutate({ opt: o, status: "ENCERRADA", exit_price: Number(ep), exit_date: new Date().toISOString().slice(0, 10) });
                         } else if (v === "EXERCIDA") {
-                          updateStatus.mutate({ id: o.id, status: "EXERCIDA", exit_date: new Date().toISOString().slice(0, 10), exit_price: Number(o.strike) });
+                          updateStatus.mutate({ opt: o, status: "EXERCIDA", exit_date: new Date().toISOString().slice(0, 10), exit_price: Number(o.strike) });
                         } else {
-                          updateStatus.mutate({ id: o.id, status: "ABERTA", exit_price: null, exit_date: null });
+                          updateStatus.mutate({ opt: o, status: "ABERTA", exit_price: null, exit_date: null });
                         }
                       }}>
                         <SelectTrigger className="h-7 w-32 text-xs">
