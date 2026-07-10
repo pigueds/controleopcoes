@@ -101,28 +101,26 @@ function CarteiraPage() {
             if (!list.length) return;
             toast.info("Atualizando cotações...");
             const { quotes, error: quoteError } = await fetchQuotes(list.map((s) => s.ticker));
-            if (quoteError) toast.error(`Erro ao buscar cotações: ${quoteError}`);
+            if (quoteError) console.warn("[quotes] parcial:", quoteError);
             let ok = 0;
-            let failed = 0;
-            for (const s of list) {
+            const failed: string[] = [];
+            await Promise.all(list.map(async (s) => {
               const q = quotes[s.ticker.trim().toUpperCase()];
-              if (!q) {
-                failed++;
-                continue;
-              }
+              if (!q) { failed.push(s.ticker); return; }
               const { error } = await supabase.from("stocks")
                 .update({ current_price: q.price, daily_change: q.change })
                 .eq("id", s.id);
               if (error) {
-                failed++;
-                toast.error(`Erro ao salvar ${s.ticker}: ${error.message}`);
+                failed.push(s.ticker);
+                console.error(`[quotes] erro ao salvar ${s.ticker}:`, error.message);
               } else {
                 ok++;
               }
-            }
+            }));
             qc.invalidateQueries({ queryKey: ["stocks"] });
-            if (ok > 0) toast.success(`${ok}/${list.length} cotações atualizadas`);
-            if (failed > 0) toast.warning(`${failed} ticker(s) não retornaram cotação`);
+            if (ok > 0) toast.success(`${ok} cotação(ões) atualizada(s) com sucesso.`);
+            if (failed.length > 0) toast.warning(`Não foi possível atualizar: ${failed.join(", ")}`);
+            if (ok === 0 && failed.length === 0) toast.error("Nenhuma cotação foi processada.");
           }}>
             <RefreshCw className="h-4 w-4" /> Atualizar preços
           </Button>
@@ -208,26 +206,41 @@ function StockDialog({ onClose }: { onClose: () => void }) {
       const tk = ticker.toUpperCase().trim();
       const quantity = Number(qty) || 0;
       const avgNum = avg ? Number(avg) : null;
-      const { error } = await supabase.from("stocks").insert({
-        user_id: u.user.id,
-        ticker: tk,
-        asset_type: assetType as never,
-        current_price: Number(price) || 0,
-        daily_change: Number(change) || 0,
-        manual_avg_price: avgNum,
-      });
-      if (error) throw error;
+      const priceNum = Number(price) || 0;
+      const unit = avgNum ?? priceNum;
+
+      // Verifica se ativo já existe: se sim, apenas soma quantidade via movimento (preço médio recalculado por aggregatePosition).
+      const { data: existing, error: findErr } = await supabase
+        .from("stocks").select("id").eq("ticker", tk).maybeSingle();
+      if (findErr) throw findErr;
+
+      if (!existing) {
+        const { error } = await supabase.from("stocks").insert({
+          user_id: u.user.id,
+          ticker: tk,
+          asset_type: assetType as never,
+          current_price: priceNum,
+          daily_change: Number(change) || 0,
+          manual_avg_price: null,
+        });
+        if (error) throw error;
+      } else if (priceNum > 0) {
+        // Atualiza cotação atual do ativo existente
+        await supabase.from("stocks")
+          .update({ current_price: priceNum, daily_change: Number(change) || 0 })
+          .eq("id", existing.id);
+      }
+
       if (quantity > 0) {
-        const unit = avgNum ?? Number(price) ?? 0;
         const { error: mErr } = await supabase.from("stock_movements").insert({
           user_id: u.user.id,
           stock_ticker: tk,
-          event_type: "SALDO_INICIAL" as never,
+          event_type: (existing ? "COMPRA" : "SALDO_INICIAL") as never,
           date: new Date().toISOString().slice(0, 10),
           quantity,
           price: unit,
           total_value: quantity * unit,
-          origin: "Cadastro inicial",
+          origin: existing ? "Aporte manual" : "Cadastro inicial",
         });
         if (mErr) throw mErr;
       }

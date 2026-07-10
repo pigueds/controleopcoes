@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
-  capitalCommitted, currentResult, daysUntil, fmtDate, fmtMoney, fmtPct,
+  aggregatePosition, capitalCommitted, currentResult, daysUntil, fmtDate, fmtMoney, fmtPct,
   parseOptionTicker, premiumTotal, resolveExpirationDate, resolveStockTicker,
 } from "@/lib/options-utils";
 import { Pencil, Plus, Trash2 } from "lucide-react";
@@ -58,11 +58,54 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
   });
 
   const updateStatus = useMutation({
-    mutationFn: async ({ id, status, exit_price, exit_date }: { id: string; status: OptionRow["status"]; exit_price?: number | null; exit_date?: string | null }) => {
-      const { error } = await supabase.from("options").update({ status, exit_price: exit_price ?? null, exit_date: exit_date ?? null }).eq("id", id);
+    mutationFn: async ({ opt, status, exit_price, exit_date }: { opt: OptionRow; status: OptionRow["status"]; exit_price?: number | null; exit_date?: string | null }) => {
+      const { error } = await supabase.from("options")
+        .update({ status, exit_price: exit_price ?? null, exit_date: exit_date ?? null })
+        .eq("id", opt.id);
       if (error) throw error;
+
+      // PUT exercida → incorporar ações na carteira (movimento EXERCICIO_PUT usa strike como preço).
+      if (status === "EXERCIDA" && opt.option_type === "PUT") {
+        const { data: u } = await supabase.auth.getUser();
+        if (!u.user) return;
+        const qty = Number(opt.quantity);
+        const strike = Number(opt.strike);
+        const date = exit_date ?? new Date().toISOString().slice(0, 10);
+
+        // Garante que ativo exista na carteira; se não, cria.
+        const { data: existing } = await supabase
+          .from("stocks").select("id").eq("ticker", opt.stock_ticker).maybeSingle();
+        if (!existing) {
+          await supabase.from("stocks").insert({
+            user_id: u.user.id,
+            ticker: opt.stock_ticker,
+            asset_type: "ACAO" as never,
+            current_price: strike,
+            daily_change: 0,
+            manual_avg_price: null,
+          });
+        }
+        const { error: mErr } = await supabase.from("stock_movements").insert({
+          user_id: u.user.id,
+          stock_ticker: opt.stock_ticker,
+          event_type: "EXERCICIO_PUT" as never,
+          date,
+          quantity: qty,
+          price: strike,
+          total_value: qty * strike,
+          origin: `PUT exercida ${opt.option_ticker}`,
+        });
+        if (mErr) throw mErr;
+      }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["options", kind] }); toast.success("Atualizado"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["options", kind] });
+      qc.invalidateQueries({ queryKey: ["stocks"] });
+      qc.invalidateQueries({ queryKey: ["movements"] });
+      qc.invalidateQueries({ queryKey: ["stocks-prices"] });
+      qc.invalidateQueries({ queryKey: ["lftb-position"] });
+      toast.success("Atualizado");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -88,6 +131,23 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
       .filter((o) => o.status === "ABERTA")
       .reduce((acc, o) => acc + capitalCommitted(Number(o.strike), Number(o.quantity)), 0);
   }, [list, kind]);
+
+  // Capital investido em LFTB11: soma dos movimentos (quantidade) * preço atual do ativo.
+  const lftbQ = useQuery({
+    queryKey: ["lftb-position"],
+    enabled: kind === "PUT",
+    queryFn: async () => {
+      const [{ data: stock }, { data: moves }] = await Promise.all([
+        supabase.from("stocks").select("current_price").eq("ticker", "LFTB11").maybeSingle(),
+        supabase.from("stock_movements").select("event_type, quantity, price, total_value, stock_ticker").eq("stock_ticker", "LFTB11"),
+      ]);
+      const agg = aggregatePosition((moves ?? []) as never);
+      const price = Number(stock?.current_price ?? 0);
+      return agg.quantity * (price || agg.avgPrice);
+    },
+  });
+  const lftbValue = Number(lftbQ.data ?? 0);
+  const notionalOk = totalCapitalPuts <= lftbValue;
 
   return (
     <div className="space-y-4">
@@ -163,7 +223,7 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
                     <TableCell className="text-right tabular">{fmtMoney(Number(o.entry_price))}</TableCell>
                     <TableCell className="text-right tabular">{fmtMoney(Number(o.strike))}</TableCell>
                     <TableCell className="text-right tabular">{sPrice > 0 ? fmtMoney(sPrice) : "—"}</TableCell>
-                    <TableCell className={`text-right tabular ${diff >= 0 ? "text-profit" : "text-loss"}`}>{sPrice > 0 ? fmtPct(diff) : "—"}</TableCell>
+                    <TableCell className={`text-right tabular ${sPrice === 0 ? "" : (kind === "CALL" ? (sPrice > Number(o.strike) ? "text-loss" : "text-profit") : (sPrice < Number(o.strike) ? "text-loss" : "text-profit"))}`}>{sPrice > 0 ? fmtPct(diff) : "—"}</TableCell>
                     <TableCell className="text-right tabular">{fmtPct(pctPremio)}</TableCell>
                     {kind === "PUT" && <TableCell className="text-right tabular">{fmtMoney(capitalCommitted(Number(o.strike), Number(o.quantity)))}</TableCell>}
                     <TableCell>{fmtDate(o.expiration_date)}</TableCell>
@@ -176,11 +236,11 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
                         if (v === "ENCERRADA") {
                           const ep = prompt("Preço de saída?");
                           if (ep == null) return;
-                          updateStatus.mutate({ id: o.id, status: "ENCERRADA", exit_price: Number(ep), exit_date: new Date().toISOString().slice(0, 10) });
+                          updateStatus.mutate({ opt: o, status: "ENCERRADA", exit_price: Number(ep), exit_date: new Date().toISOString().slice(0, 10) });
                         } else if (v === "EXERCIDA") {
-                          updateStatus.mutate({ id: o.id, status: "EXERCIDA", exit_date: new Date().toISOString().slice(0, 10), exit_price: Number(o.strike) });
+                          updateStatus.mutate({ opt: o, status: "EXERCIDA", exit_date: new Date().toISOString().slice(0, 10), exit_price: Number(o.strike) });
                         } else {
-                          updateStatus.mutate({ id: o.id, status: "ABERTA", exit_price: null, exit_date: null });
+                          updateStatus.mutate({ opt: o, status: "ABERTA", exit_price: null, exit_date: null });
                         }
                       }}>
                         <SelectTrigger className="h-7 w-32 text-xs">
@@ -215,10 +275,16 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
       </Card>
 
       {kind === "PUT" && (
-        <Card className="bg-surface border-border p-4 flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Capital comprometido com puts abertas (notional)</span>
-          <span className="text-lg font-semibold tabular">{fmtMoney(totalCapitalPuts)}</span>
-        </Card>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Card className="bg-surface border-border p-4 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Capital comprometido com puts abertas (notional)</span>
+            <span className={`text-lg font-semibold tabular ${notionalOk ? "text-profit" : "text-loss"}`}>{fmtMoney(totalCapitalPuts)}</span>
+          </Card>
+          <Card className="bg-surface border-border p-4 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Capital investido em LFTB11</span>
+            <span className="text-lg font-semibold tabular">{fmtMoney(lftbValue)}</span>
+          </Card>
+        </div>
       )}
 
       <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
