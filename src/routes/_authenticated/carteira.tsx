@@ -63,11 +63,18 @@ function CarteiraPage() {
   });
 
   const remove = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, ticker }: { id: string; ticker: string }) => {
+      // Remove também as movimentações do ativo para evitar resíduos ao recadastrar
+      const { error: mErr } = await supabase.from("stock_movements").delete().eq("stock_ticker", ticker);
+      if (mErr) throw mErr;
       const { error } = await supabase.from("stocks").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["stocks"] }); toast.success("Removido"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stocks"] });
+      qc.invalidateQueries({ queryKey: ["movements"] });
+      toast.success("Removido");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
