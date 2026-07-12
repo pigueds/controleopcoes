@@ -63,11 +63,18 @@ function CarteiraPage() {
   });
 
   const remove = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, ticker }: { id: string; ticker: string }) => {
+      // Remove também as movimentações do ativo para evitar resíduos ao recadastrar
+      const { error: mErr } = await supabase.from("stock_movements").delete().eq("stock_ticker", ticker);
+      if (mErr) throw mErr;
       const { error } = await supabase.from("stocks").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["stocks"] }); toast.success("Removido"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stocks"] });
+      qc.invalidateQueries({ queryKey: ["movements"] });
+      toast.success("Removido");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -176,7 +183,11 @@ function CarteiraPage() {
                   </TableCell>
                   <TableCell className="text-xs">{rec}</TableCell>
                   <TableCell>
-                    <Button size="icon" variant="ghost" onClick={() => remove.mutate(s.id)}>
+                    <Button size="icon" variant="ghost" onClick={() => {
+                      if (confirm(`Remover ${s.ticker} e todas as suas movimentações?`)) {
+                        remove.mutate({ id: s.id, ticker: s.ticker });
+                      }
+                    }}>
                       <Trash2 className="h-4 w-4 text-loss" />
                     </Button>
                   </TableCell>

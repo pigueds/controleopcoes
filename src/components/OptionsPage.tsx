@@ -97,6 +97,26 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
         });
         if (mErr) throw mErr;
       }
+
+      // CALL exercida → remover ações da carteira (movimento EXERCICIO_CALL ao preço do strike).
+      if (status === "EXERCIDA" && opt.option_type === "CALL") {
+        const { data: u } = await supabase.auth.getUser();
+        if (!u.user) return;
+        const qty = Number(opt.quantity);
+        const strike = Number(opt.strike);
+        const date = exit_date ?? new Date().toISOString().slice(0, 10);
+        const { error: mErr } = await supabase.from("stock_movements").insert({
+          user_id: u.user.id,
+          stock_ticker: opt.stock_ticker,
+          event_type: "EXERCICIO_CALL" as never,
+          date,
+          quantity: qty,
+          price: strike,
+          total_value: qty * strike,
+          origin: `CALL exercida ${opt.option_ticker}`,
+        });
+        if (mErr) throw mErr;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["options", kind] });
