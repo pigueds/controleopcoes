@@ -183,7 +183,11 @@ function CarteiraPage() {
                   </TableCell>
                   <TableCell className="text-xs">{rec}</TableCell>
                   <TableCell>
-                    <Button size="icon" variant="ghost" onClick={() => remove.mutate(s.id)}>
+                    <Button size="icon" variant="ghost" onClick={() => {
+                      if (confirm(`Remover ${s.ticker} e todas as suas movimentações?`)) {
+                        remove.mutate({ id: s.id, ticker: s.ticker });
+                      }
+                    }}>
                       <Trash2 className="h-4 w-4 text-loss" />
                     </Button>
                   </TableCell>
