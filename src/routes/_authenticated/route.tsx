@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet, redirect, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Briefcase, PhoneCall, ShieldAlert, LogOut, TrendingUp, Menu, X, Receipt, History } from "lucide-react";
+import { LayoutDashboard, Briefcase, PhoneCall, ShieldAlert, LogOut, TrendingUp, Menu, X, Receipt, History, Upload } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,6 +23,7 @@ const NAV = [
   { to: "/puts", label: "Puts", icon: ShieldAlert },
   { to: "/darf", label: "DARF", icon: Receipt },
   { to: "/movimentacoes", label: "Movimentações", icon: History },
+  { to: "/importar", label: "Importar B3", icon: Upload },
 ];
 
 function AuthedLayout() {
