@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      imported_movements: {
+        Row: {
+          created_at: string
+          id: string
+          movement_date: string | null
+          raw: Json | null
+          source_file: string | null
+          source_hash: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          movement_date?: string | null
+          raw?: Json | null
+          source_file?: string | null
+          source_hash: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          movement_date?: string | null
+          raw?: Json | null
+          source_file?: string | null
+          source_hash?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       options: {
         Row: {
           created_at: string
@@ -23,6 +53,7 @@ export type Database = {
           exit_price: number | null
           expiration_date: string
           id: string
+          needs_review: boolean
           notes: string | null
           option_ticker: string
           option_type: Database["public"]["Enums"]["option_type"]
@@ -41,6 +72,7 @@ export type Database = {
           exit_price?: number | null
           expiration_date: string
           id?: string
+          needs_review?: boolean
           notes?: string | null
           option_ticker: string
           option_type: Database["public"]["Enums"]["option_type"]
@@ -59,6 +91,7 @@ export type Database = {
           exit_price?: number | null
           expiration_date?: string
           id?: string
+          needs_review?: boolean
           notes?: string | null
           option_ticker?: string
           option_type?: Database["public"]["Enums"]["option_type"]
