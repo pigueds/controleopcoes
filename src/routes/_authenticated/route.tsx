@@ -23,6 +23,7 @@ const NAV = [
   { to: "/puts", label: "Puts", icon: ShieldAlert },
   { to: "/darf", label: "DARF", icon: Receipt },
   { to: "/movimentacoes", label: "Movimentações", icon: History },
+  { to: "/importar", label: "Importar B3", icon: Upload },
 ];
 
 function AuthedLayout() {
