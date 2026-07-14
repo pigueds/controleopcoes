@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle } from "lucide-react";
+import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
 import { classifyRows, parseSheet, optionExpiration, type ParsedItem } from "@/lib/b3-import";
 import { useRefExpirations, useRefStocks } from "@/hooks/use-references";
 import { resolveStockTicker } from "@/lib/options-utils";
@@ -37,12 +37,18 @@ function ImportarPage() {
       const rows = parseSheet(buf);
       const items = await classifyRows(rows, user.id, refExpQ.data ?? []);
       const hashes = items.map((i) => i.hash);
-      const { data: existing, error } = await supabase
-        .from("imported_movements")
-        .select("source_hash")
-        .in("source_hash", hashes);
-      if (error) throw error;
-      const existingSet = new Set((existing ?? []).map((r) => r.source_hash));
+      // Chunk lookup to avoid URL length issues on very large imports
+      const existingSet = new Set<string>();
+      const CHUNK = 200;
+      for (let i = 0; i < hashes.length; i += CHUNK) {
+        const slice = hashes.slice(i, i + CHUNK);
+        const { data: existing, error } = await supabase
+          .from("imported_movements")
+          .select("source_hash")
+          .in("source_hash", slice);
+        if (error) throw error;
+        for (const r of existing ?? []) existingSet.add(r.source_hash);
+      }
       setState({ fileName: file.name, items, existingHashes: existingSet });
       toast.success(`${rows.length} linhas lidas`);
     } catch (e) {
@@ -205,16 +211,18 @@ function ImportarPage() {
       }));
       const allMarks = [...toMarkImported, ...ignoredMarks];
       if (allMarks.length > 0) {
-        const { error } = await supabase.from("imported_movements").insert(
-          allMarks.map((m) => ({
-            user_id: user.id,
-            source_hash: m.source_hash,
-            source_file: fileName,
-            movement_date: m.movement_date,
-            raw: m.raw as never,
-          })),
-        );
-        if (error) throw error;
+        const payload = allMarks.map((m) => ({
+          user_id: user.id,
+          source_hash: m.source_hash,
+          source_file: fileName,
+          movement_date: m.movement_date,
+          raw: m.raw as never,
+        }));
+        const CHUNK = 200;
+        for (let i = 0; i < payload.length; i += CHUNK) {
+          const { error } = await supabase.from("imported_movements").insert(payload.slice(i, i + CHUNK));
+          if (error) throw error;
+        }
       }
 
       return { ok, fail, failures };
@@ -234,13 +242,39 @@ function ImportarPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Importar extrato B3</h1>
-        <p className="text-sm text-muted-foreground">
-          Envie a planilha "Extrato de Movimentação" (.xlsx). Operações já importadas anteriormente são
-          detectadas por hash e ignoradas automaticamente.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-xl font-semibold">Importar extrato B3</h1>
+          <p className="text-sm text-muted-foreground">
+            Envie a planilha "Extrato de Movimentação" (.xlsx). Operações já importadas anteriormente são
+            detectadas por hash e ignoradas automaticamente.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          className="text-loss border-loss/40 hover:bg-loss/10"
+          onClick={async () => {
+            if (!confirm("Isso vai APAGAR todas as opções, ações, movimentos e histórico de importações. Deseja continuar?")) return;
+            if (!confirm("Confirma? Esta ação não pode ser desfeita.")) return;
+            try {
+              const uid = user.id;
+              await Promise.all([
+                supabase.from("options").delete().eq("user_id", uid),
+                supabase.from("stock_movements").delete().eq("user_id", uid),
+                supabase.from("stocks").delete().eq("user_id", uid),
+                supabase.from("imported_movements").delete().eq("user_id", uid),
+              ]);
+              qc.invalidateQueries();
+              toast.success("Base zerada");
+            } catch (e) {
+              toast.error((e as Error).message);
+            }
+          }}
+        >
+          <Trash2 className="h-4 w-4" /> Zerar base de dados
+        </Button>
       </div>
+
 
       <Card className="bg-surface border-border p-4">
         <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-border rounded-md p-8 cursor-pointer hover:bg-accent/30 transition">
