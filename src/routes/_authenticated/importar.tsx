@@ -242,13 +242,39 @@ function ImportarPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Importar extrato B3</h1>
-        <p className="text-sm text-muted-foreground">
-          Envie a planilha "Extrato de Movimentação" (.xlsx). Operações já importadas anteriormente são
-          detectadas por hash e ignoradas automaticamente.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-xl font-semibold">Importar extrato B3</h1>
+          <p className="text-sm text-muted-foreground">
+            Envie a planilha "Extrato de Movimentação" (.xlsx). Operações já importadas anteriormente são
+            detectadas por hash e ignoradas automaticamente.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          className="text-loss border-loss/40 hover:bg-loss/10"
+          onClick={async () => {
+            if (!confirm("Isso vai APAGAR todas as opções, ações, movimentos e histórico de importações. Deseja continuar?")) return;
+            if (!confirm("Confirma? Esta ação não pode ser desfeita.")) return;
+            try {
+              const uid = user.id;
+              await Promise.all([
+                supabase.from("options").delete().eq("user_id", uid),
+                supabase.from("stock_movements").delete().eq("user_id", uid),
+                supabase.from("stocks").delete().eq("user_id", uid),
+                supabase.from("imported_movements").delete().eq("user_id", uid),
+              ]);
+              qc.invalidateQueries();
+              toast.success("Base zerada");
+            } catch (e) {
+              toast.error((e as Error).message);
+            }
+          }}
+        >
+          <Trash2 className="h-4 w-4" /> Zerar base de dados
+        </Button>
       </div>
+
 
       <Card className="bg-surface border-border p-4">
         <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-border rounded-md p-8 cursor-pointer hover:bg-accent/30 transition">
