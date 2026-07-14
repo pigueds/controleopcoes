@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle } from "lucide-react";
+import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
 import { classifyRows, parseSheet, optionExpiration, type ParsedItem } from "@/lib/b3-import";
 import { useRefExpirations, useRefStocks } from "@/hooks/use-references";
 import { resolveStockTicker } from "@/lib/options-utils";
