@@ -211,16 +211,18 @@ function ImportarPage() {
       }));
       const allMarks = [...toMarkImported, ...ignoredMarks];
       if (allMarks.length > 0) {
-        const { error } = await supabase.from("imported_movements").insert(
-          allMarks.map((m) => ({
-            user_id: user.id,
-            source_hash: m.source_hash,
-            source_file: fileName,
-            movement_date: m.movement_date,
-            raw: m.raw as never,
-          })),
-        );
-        if (error) throw error;
+        const payload = allMarks.map((m) => ({
+          user_id: user.id,
+          source_hash: m.source_hash,
+          source_file: fileName,
+          movement_date: m.movement_date,
+          raw: m.raw as never,
+        }));
+        const CHUNK = 200;
+        for (let i = 0; i < payload.length; i += CHUNK) {
+          const { error } = await supabase.from("imported_movements").insert(payload.slice(i, i + CHUNK));
+          if (error) throw error;
+        }
       }
 
       return { ok, fail, failures };
