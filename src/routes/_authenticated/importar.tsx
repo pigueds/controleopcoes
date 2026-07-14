@@ -37,12 +37,18 @@ function ImportarPage() {
       const rows = parseSheet(buf);
       const items = await classifyRows(rows, user.id, refExpQ.data ?? []);
       const hashes = items.map((i) => i.hash);
-      const { data: existing, error } = await supabase
-        .from("imported_movements")
-        .select("source_hash")
-        .in("source_hash", hashes);
-      if (error) throw error;
-      const existingSet = new Set((existing ?? []).map((r) => r.source_hash));
+      // Chunk lookup to avoid URL length issues on very large imports
+      const existingSet = new Set<string>();
+      const CHUNK = 200;
+      for (let i = 0; i < hashes.length; i += CHUNK) {
+        const slice = hashes.slice(i, i + CHUNK);
+        const { data: existing, error } = await supabase
+          .from("imported_movements")
+          .select("source_hash")
+          .in("source_hash", slice);
+        if (error) throw error;
+        for (const r of existing ?? []) existingSet.add(r.source_hash);
+      }
       setState({ fileName: file.name, items, existingHashes: existingSet });
       toast.success(`${rows.length} linhas lidas`);
     } catch (e) {
