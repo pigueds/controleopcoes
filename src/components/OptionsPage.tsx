@@ -235,7 +235,7 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
                   ? currentResult(premio, Number(o.exit_price), Number(o.quantity))
                   : null;
                 return (
-                  <TableRow key={o.id}>
+                  <TableRow key={o.id} className={o.status === "ABERTA" ? "bg-profit/10 hover:bg-profit/15" : "opacity-60"}>
                     <TableCell>{fmtDate(o.entry_date)}</TableCell>
                     <TableCell className="font-mono">{o.option_ticker}</TableCell>
                     <TableCell className="font-mono text-xs">{o.stock_ticker}</TableCell>
