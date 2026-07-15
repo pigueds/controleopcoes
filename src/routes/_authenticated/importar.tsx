@@ -278,7 +278,9 @@ function ImportarPage() {
           raw: m.raw as never,
         }));
         await chunked(payload, async (slice) => {
-          const { error } = await supabase.from("imported_movements").insert(slice);
+          const { error } = await supabase
+            .from("imported_movements")
+            .upsert(slice, { onConflict: "user_id,source_hash", ignoreDuplicates: true });
           if (error) throw error;
         });
       }
