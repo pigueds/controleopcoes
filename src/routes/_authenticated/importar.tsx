@@ -383,7 +383,7 @@ function ImportarPage() {
                   disabled={importMut.isPending || groups.news.length === 0}
                 >
                   <Upload className="h-4 w-4" />
-                  {importMut.isPending ? "Importando..." : `Confirmar (${groups.news.length})`}
+                  {importMut.isPending ? (progress ?? "Importando...") : `Confirmar (${groups.news.length})`}
                 </Button>
               </div>
             </div>
