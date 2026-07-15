@@ -74,6 +74,8 @@ function ImportarPage() {
     };
   }, [state]);
 
+  const [progress, setProgress] = useState<string | null>(null);
+
   const importMut = useMutation({
     mutationFn: async () => {
       if (!state || !groups) return;
@@ -84,53 +86,73 @@ function ImportarPage() {
       let ok = 0;
       let fail = 0;
       const failures: string[] = [];
+      const CHUNK = 400;
 
-      // 1) Stock movements + ensure stocks row
-      const stockOps = [...groups.stockBuys, ...groups.stockSells];
-      for (const it of stockOps) {
-        if (it.kind !== "STOCK_BUY" && it.kind !== "STOCK_SELL") continue;
-        try {
-          // ensure stock row exists
-          const { data: existing } = await supabase
-            .from("stocks")
-            .select("id")
-            .eq("ticker", it.stock_ticker)
-            .maybeSingle();
-          if (!existing) {
-            const { error: sErr } = await supabase.from("stocks").insert({
-              user_id: user.id,
-              ticker: it.stock_ticker,
-              asset_type: "ACAO",
-              current_price: 0,
-            });
-            if (sErr) throw sErr;
-          }
-          const { error: mErr } = await supabase.from("stock_movements").insert({
-            user_id: user.id,
-            date: it.date,
-            stock_ticker: it.stock_ticker,
-            event_type: it.kind === "STOCK_BUY" ? "COMPRA" : "VENDA",
-            quantity: it.quantity,
-            price: it.price,
-            total_value: it.total,
-            origin: `B3 import: ${fileName}`,
+      const chunked = async <T,>(arr: T[], fn: (slice: T[]) => Promise<void>) => {
+        for (let i = 0; i < arr.length; i += CHUNK) {
+          await fn(arr.slice(i, i + CHUNK));
+        }
+      };
+
+      // 1) Ensure stocks rows (bulk) for unique tickers
+      const stockOps = [...groups.stockBuys, ...groups.stockSells] as Array<
+        Extract<ParsedItem, { kind: "STOCK_BUY" | "STOCK_SELL" }>
+      >;
+      const uniqueTickers = Array.from(new Set(stockOps.map((s) => s.stock_ticker)));
+      if (uniqueTickers.length > 0) {
+        setProgress(`Preparando ${uniqueTickers.length} ativos...`);
+        const { data: existingStocks, error: exErr } = await supabase
+          .from("stocks")
+          .select("ticker")
+          .eq("user_id", user.id)
+          .in("ticker", uniqueTickers);
+        if (exErr) throw exErr;
+        const have = new Set((existingStocks ?? []).map((s) => s.ticker));
+        const toInsertStocks = uniqueTickers
+          .filter((t) => !have.has(t))
+          .map((t) => ({ user_id: user.id, ticker: t, asset_type: "ACAO" as const, current_price: 0 }));
+        if (toInsertStocks.length > 0) {
+          await chunked(toInsertStocks, async (slice) => {
+            const { error } = await supabase.from("stocks").insert(slice);
+            if (error) throw error;
           });
-          if (mErr) throw mErr;
-          toMarkImported.push({ source_hash: it.hash, movement_date: it.date, raw: it.row.raw });
-          ok++;
-        } catch (e) {
-          fail++;
-          failures.push(`${it.stock_ticker} ${it.date}: ${(e as Error).message}`);
         }
       }
 
-      // 2) Option sells (open positions)
-      for (const it of groups.optionSells) {
-        if (it.kind !== "OPTION_SELL") continue;
+      // 2) Bulk insert stock_movements
+      if (stockOps.length > 0) {
+        setProgress(`Inserindo ${stockOps.length} movimentos de ações...`);
+        const rows = stockOps.map((it) => ({
+          user_id: user.id,
+          date: it.date,
+          stock_ticker: it.stock_ticker,
+          event_type: it.kind === "STOCK_BUY" ? ("COMPRA" as const) : ("VENDA" as const),
+          quantity: it.quantity,
+          price: it.price,
+          total_value: it.total,
+          origin: `B3 import: ${fileName}`,
+        }));
         try {
+          await chunked(rows, async (slice) => {
+            const { error } = await supabase.from("stock_movements").insert(slice);
+            if (error) throw error;
+          });
+          for (const it of stockOps) toMarkImported.push({ source_hash: it.hash, movement_date: it.date, raw: it.row.raw });
+          ok += stockOps.length;
+        } catch (e) {
+          fail += stockOps.length;
+          failures.push(`Movimentos de ações: ${(e as Error).message}`);
+        }
+      }
+
+      // 3) Bulk insert option sells (open positions)
+      const sells = groups.optionSells as Array<Extract<ParsedItem, { kind: "OPTION_SELL" }>>;
+      if (sells.length > 0) {
+        setProgress(`Inserindo ${sells.length} vendas de opções...`);
+        const rows = sells.map((it) => {
           const stock_ticker = resolveStockTicker(it.option_ticker, refStocks) ?? "";
           const expiration = optionExpiration(it.option_ticker, it.entry_date, refExp);
-          const { error } = await supabase.from("options").insert({
+          return {
             user_id: user.id,
             option_ticker: it.option_ticker,
             option_type: it.option_type,
@@ -140,44 +162,75 @@ function ImportarPage() {
             quantity: it.quantity,
             entry_date: it.entry_date,
             expiration_date: expiration ?? it.entry_date,
-            status: "ABERTA",
+            status: "ABERTA" as const,
             needs_review: true,
             notes: `Importado do extrato B3 (${fileName})`,
+          };
+        });
+        try {
+          await chunked(rows, async (slice) => {
+            const { error } = await supabase.from("options").insert(slice);
+            if (error) throw error;
           });
-          if (error) throw error;
-          toMarkImported.push({ source_hash: it.hash, movement_date: it.entry_date, raw: it.row.raw });
-          ok++;
+          for (const it of sells) toMarkImported.push({ source_hash: it.hash, movement_date: it.entry_date, raw: it.row.raw });
+          ok += sells.length;
         } catch (e) {
-          fail++;
-          failures.push(`${it.option_ticker} venda: ${(e as Error).message}`);
+          fail += sells.length;
+          failures.push(`Vendas de opções: ${(e as Error).message}`);
         }
       }
 
-      // 3) Option buys (close matching open positions)
-      for (const it of groups.optionBuys) {
-        if (it.kind !== "OPTION_BUY") continue;
-        try {
-          const { data: matches } = await supabase
+      // 4) Option buys — bulk-fetch open positions by ticker, then update per id
+      const buys = groups.optionBuys as Array<Extract<ParsedItem, { kind: "OPTION_BUY" }>>;
+      if (buys.length > 0) {
+        setProgress(`Encerrando ${buys.length} recompras de opções...`);
+        const tickers = Array.from(new Set(buys.map((b) => b.option_ticker)));
+        const openByTicker = new Map<string, { id: string; entry_date: string }[]>();
+        for (let i = 0; i < tickers.length; i += 100) {
+          const slice = tickers.slice(i, i + 100);
+          const { data, error } = await supabase
             .from("options")
-            .select("id, quantity, entry_price, entry_date")
-            .eq("option_ticker", it.option_ticker)
+            .select("id, option_ticker, entry_date")
+            .eq("user_id", user.id)
             .eq("status", "ABERTA")
+            .in("option_ticker", slice)
             .order("entry_date", { ascending: true });
-          const match = (matches ?? [])[0];
+          if (error) throw error;
+          for (const r of data ?? []) {
+            const arr = openByTicker.get(r.option_ticker) ?? [];
+            arr.push({ id: r.id, entry_date: r.entry_date });
+            openByTicker.set(r.option_ticker, arr);
+          }
+        }
+        const updates: { id: string; exit_price: number; exit_date: string }[] = [];
+        const orphans: typeof buys = [];
+        for (const it of buys) {
+          const arr = openByTicker.get(it.option_ticker);
+          const match = arr?.shift();
           if (match) {
-            const { error } = await supabase
-              .from("options")
-              .update({
-                exit_price: it.exit_price,
-                exit_date: it.exit_date,
-                status: "ENCERRADA",
-              })
-              .eq("id", match.id);
-            if (error) throw error;
+            updates.push({ id: match.id, exit_price: it.exit_price, exit_date: it.exit_date });
+            toMarkImported.push({ source_hash: it.hash, movement_date: it.exit_date, raw: it.row.raw });
           } else {
+            orphans.push(it);
+          }
+        }
+        for (const u of updates) {
+          const { error } = await supabase
+            .from("options")
+            .update({ exit_price: u.exit_price, exit_date: u.exit_date, status: "ENCERRADA" })
+            .eq("id", u.id);
+          if (error) {
+            fail++;
+            failures.push(`Update opção: ${error.message}`);
+          } else {
+            ok++;
+          }
+        }
+        if (orphans.length > 0) {
+          const rows = orphans.map((it) => {
             const stock_ticker = resolveStockTicker(it.option_ticker, refStocks) ?? "";
             const expiration = optionExpiration(it.option_ticker, it.exit_date, refExp);
-            const { error } = await supabase.from("options").insert({
+            return {
               user_id: user.id,
               option_ticker: it.option_ticker,
               option_type: it.option_type,
@@ -189,21 +242,26 @@ function ImportarPage() {
               expiration_date: expiration ?? it.exit_date,
               exit_price: it.exit_price,
               exit_date: it.exit_date,
-              status: "ENCERRADA",
+              status: "ENCERRADA" as const,
               needs_review: true,
               notes: `Recompra órfã importada do extrato B3 (${fileName})`,
+            };
+          });
+          try {
+            await chunked(rows, async (slice) => {
+              const { error } = await supabase.from("options").insert(slice);
+              if (error) throw error;
             });
-            if (error) throw error;
+            for (const it of orphans) toMarkImported.push({ source_hash: it.hash, movement_date: it.exit_date, raw: it.row.raw });
+            ok += orphans.length;
+          } catch (e) {
+            fail += orphans.length;
+            failures.push(`Recompras órfãs: ${(e as Error).message}`);
           }
-          toMarkImported.push({ source_hash: it.hash, movement_date: it.exit_date, raw: it.row.raw });
-          ok++;
-        } catch (e) {
-          fail++;
-          failures.push(`${it.option_ticker} recompra: ${(e as Error).message}`);
         }
       }
 
-      // 4) Mark imported hashes (also record ignored so they don't reappear)
+      // 5) Mark imported hashes (also record ignored so they don't reappear)
       const ignoredMarks = groups.ignored.map((i) => ({
         source_hash: i.hash,
         movement_date: i.row.date,
@@ -211,6 +269,7 @@ function ImportarPage() {
       }));
       const allMarks = [...toMarkImported, ...ignoredMarks];
       if (allMarks.length > 0) {
+        setProgress(`Marcando ${allMarks.length} linhas...`);
         const payload = allMarks.map((m) => ({
           user_id: user.id,
           source_hash: m.source_hash,
@@ -218,26 +277,32 @@ function ImportarPage() {
           movement_date: m.movement_date,
           raw: m.raw as never,
         }));
-        const CHUNK = 200;
-        for (let i = 0; i < payload.length; i += CHUNK) {
-          const { error } = await supabase.from("imported_movements").insert(payload.slice(i, i + CHUNK));
+        await chunked(payload, async (slice) => {
+          const { error } = await supabase.from("imported_movements").insert(slice);
           if (error) throw error;
-        }
+        });
       }
 
+      setProgress(null);
       return { ok, fail, failures };
     },
     onSuccess: (res) => {
       qc.invalidateQueries();
       setState(null);
+      setProgress(null);
       if (!res) return;
       if (res.fail > 0) {
-        toast.warning(`${res.ok} importados, ${res.fail} falharam`, { description: res.failures.slice(0, 3).join("\n") });
+        toast.warning(`${res.ok} importados, ${res.fail} falharam`, {
+          description: res.failures.slice(0, 3).join("\n"),
+        });
       } else {
         toast.success(`${res.ok} operações importadas`);
       }
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      setProgress(null);
+      toast.error(e.message);
+    },
   });
 
   return (
