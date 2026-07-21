@@ -14,8 +14,9 @@ import {
   aggregatePosition, capitalCommitted, currentResult, daysUntil, fmtDate, fmtMoney, fmtPct,
   parseOptionTicker, premiumTotal, resolveExpirationDate, resolveStockTicker,
 } from "@/lib/options-utils";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { fetchQuotes } from "@/lib/quotes";
 
 type OptionRow = {
   id: string; option_type: "CALL" | "PUT"; entry_date: string; quantity: number;
