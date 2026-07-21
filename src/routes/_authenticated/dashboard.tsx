@@ -122,16 +122,19 @@ function DashboardPage() {
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-              <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `R$${v}`} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} stroke="var(--color-border)" />
+              <YAxis tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} stroke="var(--color-border)" tickFormatter={(v) => `R$${v}`} />
               <Tooltip
                 formatter={(v: number) => fmtMoney(v)}
-                contentStyle={{ background: "hsl(var(--surface))", border: "1px solid hsl(var(--border))" }}
+                cursor={{ fill: "var(--color-surface-2)", opacity: 0.4 }}
+                contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-foreground)" }}
+                labelStyle={{ color: "var(--color-foreground)" }}
+                itemStyle={{ color: "var(--color-foreground)" }}
               />
               <Bar dataKey="result" radius={[4, 4, 0, 0]}>
                 {chartData.map((d, i) => (
-                  <Cell key={i} fill={d.result >= 0 ? "hsl(var(--profit))" : "hsl(var(--loss))"} />
+                  <Cell key={i} fill={d.result >= 0 ? "var(--color-profit)" : "var(--color-loss)"} />
                 ))}
               </Bar>
             </BarChart>
