@@ -14,8 +14,9 @@ import {
   aggregatePosition, capitalCommitted, currentResult, daysUntil, fmtDate, fmtMoney, fmtPct,
   parseOptionTicker, premiumTotal, resolveExpirationDate, resolveStockTicker,
 } from "@/lib/options-utils";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { fetchQuotes } from "@/lib/quotes";
 
 type OptionRow = {
   id: string; option_type: "CALL" | "PUT"; entry_date: string; quantity: number;
@@ -179,6 +180,36 @@ export function OptionsPage({ kind }: { kind: "CALL" | "PUT" }) {
           </p>
         </div>
         <div className="flex gap-2 items-center">
+          <Button variant="outline" onClick={async () => {
+            const tickers = Array.from(new Set((optionsQ.data ?? []).map((o) => o.stock_ticker).filter(Boolean)));
+            if (!tickers.length) return toast.info("Sem ativos para atualizar.");
+            toast.info("Atualizando cotações...");
+            const { quotes, error: qErr } = await fetchQuotes(tickers);
+            if (qErr) console.warn("[quotes] parcial:", qErr);
+            const { data: u } = await supabase.auth.getUser();
+            if (!u.user) return;
+            const { data: existing } = await supabase.from("stocks").select("id, ticker").in("ticker", tickers);
+            const byTicker = new Map((existing ?? []).map((s) => [s.ticker, s.id]));
+            let ok = 0; const failed: string[] = [];
+            await Promise.all(tickers.map(async (t) => {
+              const q = quotes[t.trim().toUpperCase()];
+              if (!q) { failed.push(t); return; }
+              const id = byTicker.get(t);
+              const { error } = id
+                ? await supabase.from("stocks").update({ current_price: q.price, daily_change: q.change }).eq("id", id)
+                : await supabase.from("stocks").insert({
+                    user_id: u.user.id, ticker: t, asset_type: "ACAO" as never,
+                    current_price: q.price, daily_change: q.change, manual_avg_price: null,
+                  });
+              if (error) { failed.push(t); console.error(error.message); } else ok++;
+            }));
+            qc.invalidateQueries({ queryKey: ["stocks-prices"] });
+            qc.invalidateQueries({ queryKey: ["stocks"] });
+            if (ok > 0) toast.success(`${ok} cotação(ões) atualizada(s).`);
+            if (failed.length) toast.warning(`Não atualizadas: ${failed.join(", ")}`);
+          }}>
+            <RefreshCw className="h-4 w-4" /> Atualizar cotações
+          </Button>
           <Select value={filter} onValueChange={(v) => setFilter(v as never)}>
             <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
             <SelectContent>
